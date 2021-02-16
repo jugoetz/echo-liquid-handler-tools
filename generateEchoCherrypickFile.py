@@ -92,7 +92,7 @@ if __name__ == '__main__':
     target_nr = args.number
 
     # inputs
-    file_target_plates = [f'plate_layout_plate{i+1}.csv' for i in range(target_nr)]
+    file_target_plates = [f'sample data/plate_layout_plate{i+1}.csv' for i in range(target_nr)]
     print(f'Importing files {file_target_plates}')
 
     # outputs
