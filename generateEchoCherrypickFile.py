@@ -43,29 +43,30 @@ def plate_to_dict(filename):
     return well_dicts
 
 
-def dict_to_plate(dictionary, filename, rows, columns):
+def dict_to_plate(dictionary, filename_base, rows, columns, map):
     """
     Print a plate dictionary of the form {well: content} to a csv in plate format
     :param dictionary: dict
-    :param filename: str
-    :param rows: int
+    :param filename_base: int
     :param columns: int
+    :param map: dict
     :return: None
     """
     column_labels = [f'{i}' if i > 0 else '' for i in range(0, columns + 1)]
-    with open(filename, 'w') as csvfile:
-        writer = csv.writer(csvfile)
-        # write header
-        writer.writerow(column_labels)
-        for r in range(1, rows + 1):
-            row_letter = string.ascii_uppercase[r - 1]
-            this_row = [row_letter]
-            for c in range(1, columns + 1):
-                try:
-                    this_row.append(dictionary[f'{row_letter}{c}'])
-                except KeyError:
-                    this_row.append('')
-            writer.writerow(this_row)
+    for key, val in dictionary.items():
+        with open(f'{filename_base}_{map[key]}.csv', 'w') as csvfile:
+            writer = csv.writer(csvfile)
+            # write header
+            writer.writerow(column_labels)
+            for r in range(1, rows + 1):
+                row_letter = string.ascii_uppercase[r - 1]
+                this_row = [row_letter]
+                for c in range(1, columns + 1):
+                    try:
+                        this_row.append(val[f'{row_letter}{c}'])
+                    except KeyError:
+                        this_row.append('')
+                writer.writerow(this_row)
     return
 
 
@@ -148,7 +149,7 @@ if __name__ == '__main__':
     print(f'Importing files {file_target_plates}...')
 
     # outputs
-    file_source_plate = 'source.csv'
+    file_source_plate_base = 'source'
     cherry_pick_file_1 = 'step1.csv'
     cherry_pick_file_2 = 'step2.csv'
 
@@ -219,4 +220,4 @@ if __name__ == '__main__':
     # output to file
     dict_to_cherrypickfile(step_1, cherry_pick_file_1, transfer_volume, map)
     dict_to_cherrypickfile(step_2, cherry_pick_file_2, transfer_volume, map)
-    dict_to_plate(source, file_source_plate, rows, columns)
+    dict_to_plate(source, file_source_plate_base, rows, columns, map)
