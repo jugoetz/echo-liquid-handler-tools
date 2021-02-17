@@ -5,14 +5,17 @@ Generate the cherry-picking files for Labcyte Echo liquid handler
 
 Inputs:
 - Target plate layout files (csv):
-    1 plate per file
+    1 plate per file, multiple files possible, located in the eponymous folder by default
 
 Outputs:
 - Cherry-picking files (csv):
     1 file per step
 - Source plate layout file (csv):
+
+Warning: The plate specification is currently hardcoded to 384well low dead volume Echo plates
 """
 
+import os
 import csv
 import string
 import argparse
@@ -38,23 +41,6 @@ def plate_to_dict(filename):
                              if row[element_nr] != ''  # skip all empty wells
                              }
     return well_dicts
-
-
-def dict_to_cherrypickfile(dictionary, filename, vol):
-    """
-    generate cherry picking file output
-    :param dictionary: dict
-    :param filename: str
-    :param vol: int
-    :return: None
-    """
-    with open(filename, 'w') as csvfile:
-        writer = csv.writer(csvfile)
-        # write header
-        writer.writerow(['Source Barcode', 'Source Well', 'Destination Barcode', 'Destination Well', 'Volume'])
-        for i in dictionary:
-            writer.writerow(['Source1', i[0], f'Synthesis{i[2]}', i[1], str(vol)])
-    return
 
 
 def dict_to_plate(dictionary, filename, rows, columns):
@@ -83,17 +69,83 @@ def dict_to_plate(dictionary, filename, rows, columns):
     return
 
 
-if __name__ == '__main__':
-    # parse sys args
-    # TODO add the filenames as sys args?
-    parser = argparse.ArgumentParser()
-    parser.add_argument('number', type=int, help='number of target plates')
-    args = parser.parse_args()
-    target_nr = args.number
+def generate_pipetting_pattern(source_dict, target_dict, transfers_per_source_well):
+    pipetting_step_1 = []
+    pipetting_step_2 = []
+    source_loads = {i: dict.fromkeys(source_dict[i], transfers_per_source_well) for i in source_dict.keys()}  # count how many times the liquid handler can still take from any given source well
+    # target_filled = {i: dict.fromkeys(target_dict[i], [False, False, False]) for i in target_dict.keys()}
 
-    # inputs
-    file_target_plates = [f'sample data/plate_layout_plate{i+1}.csv' for i in range(target_nr)]
-    print(f'Importing files {file_target_plates}')
+    for target_plate_key, target_plate_val in target_dict.items():  # iterate all target plates
+        for target_well_key, target_well_val in target_plate_val.items():  # iterate all target wells
+            for compound in target_well_val.split(','):  # iterate all compounds in any target well
+                compound = compound.strip()
+
+                for source_plate_key, source_plate_val in source_dict.items():  # iterate all source plates
+                    for source_well_key, source_well_val in source_plate_val.items():  # iterate all source wells
+                        if compound in source_well_val and source_loads[source_plate_key][source_well_key] > 0:  # check if required compound is in the source well AND if there is still a load left for transferring
+                            source_loads[source_plate_key][source_well_key] -= 1  # deplete one load from source well
+                            if 'I' in compound or 'M' in compound:  # add to step 1 if I or M
+                                pipetting_step_1.append(
+                                    [source_plate_key, source_well_key, target_plate_key, target_well_key])
+                            elif 'T' in compound:  # add to step 2 if T
+                                pipetting_step_2.append(
+                                    [source_plate_key, source_well_key, target_plate_key, target_well_key])
+                            else:
+                                print(f'ERROR. Encountered unknown compound "{compound}"')
+                            break  # break out of the source well loop when transfer step has been found
+                    else:
+                        continue  # go to next iteration of outer for-loop without breaking
+                    break  # (only executed if else statement is not hit) break the source plate loop as well
+
+    print('\n#### Transfer operations:')
+    print(f'Step 1: {pipetting_step_1}')
+    print(f'Step 2: {pipetting_step_2}')
+    return pipetting_step_1, pipetting_step_2
+
+
+def dict_to_cherrypickfile(transfers, filename, vol, map):
+    """
+    generate cherry picking file output
+    :param transfers: list of 4-tuples [(source plate, source well, target plate, target well),...]
+    :param filename: str
+    :param vol: int
+    :param map: dict, mapping the names of plates to numbers
+    :return: None
+    """
+    # TODO currently the transfer file is ordered by source plate. This creates more plate load/unload operations than ordering by target plate
+    with open(filename, 'w') as csvfile:
+        writer = csv.writer(csvfile)
+        # write header
+        writer.writerow(['Source Barcode', 'Source Well', 'Destination Barcode', 'Destination Well', 'Volume'])
+        for t in transfers:
+            writer.writerow([f'Source{map[t[0]]}', t[1], f'Synthesis{t[2]}', t[3], str(vol)])
+    return
+
+
+if __name__ == '__main__':
+    # default file location
+    target_dir_default = 'target_plate_layouts'
+    # parse sys args
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-f', nargs='*', help='filenames of the target plate layout files')
+    args = vars(parser.parse_args())
+    target_files = args['f']
+
+    # check if user gave custom input file location
+    if target_files:
+        # ensure this will be a list, even with only one element
+        if type(target_files) == str:
+            file_target_plates = [target_files,]
+        else:
+            file_target_plates = target_files
+    else:
+        # use default location
+        file_target_plates = []
+        for root, _, files in os.walk(target_dir_default):
+            for f in files:
+                file_target_plates.append(os.path.join(root, f))
+    target_nr = len(file_target_plates)
+    print(f'Importing files {file_target_plates}...')
 
     # outputs
     file_source_plate = 'source.csv'
@@ -101,7 +153,7 @@ if __name__ == '__main__':
     cherry_pick_file_2 = 'step2.csv'
 
     # specify source plate
-    source_well_volume = 50  # usable volume [µL] of every well (total volume - dead volume)
+    source_well_volume = 9  # usable volume [µL] of every well (total volume - dead volume)
     transfer_volume = 1  # volume [µL] of building block solution used per filled target well
     columns = 24  # WE ASSUME THAT A 384 WELL PLATE IS USED.
     rows = 16
@@ -114,11 +166,11 @@ if __name__ == '__main__':
     counter = {}
     for i in range(1, target_nr+1):
         for val in dict_targets[i].values():
-            for i in val.split(','):
+            for j in val.split(','):
                 try:
-                    counter[i.strip()] += 1
+                    counter[j.strip()] += 1
                 except KeyError:
-                    counter[i.strip()] = 1
+                    counter[j.strip()] = 1
     print(f'Usage counter: {counter}')
 
     # calculate number of wells in source plate
@@ -137,32 +189,34 @@ if __name__ == '__main__':
     wells['M'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[rows // 3: 2 * rows // 3] for column in range(columns))
     wells['T'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[2 * rows // 3:rows] for column in range(columns))
     # Now this might error if the building blocks don't fit one source plate
-    for bb in ['I', 'M', 'T']:
-        for key, val in wells_per_BB.items():
-            if key.startswith(bb):
-                while val > 0:
-                    source[next(wells[bb])] = key
-                    val -= 1
-    print(f'Source plate: {source}')
-
+    try:
+        for bb in ['I', 'M', 'T']:
+            for key, val in wells_per_BB.items():
+                if key.startswith(bb):
+                    while val > 0:
+                        source[next(wells[bb])] = key
+                        val -= 1
+        print(f'Source plate: {source}')
+        source = {0, source}
+        source_plate_nr = 1
+    except StopIteration:
+        # raised when building blocks don't fit one source plate (generator object running out of free wells)
+        source_plate_nr = 3
+        source = {}
+        for bb in ['I', 'M', 'T']:
+            wells = (f'{row}{column + 1}' for row in string.ascii_uppercase[0:rows] for column in range(columns))  # new plate for every building block
+            source[bb] = {}  # separate dictionary for every source plate
+            for key, val in wells_per_BB.items():
+                if key.startswith(bb):
+                    while val > 0:  # while more wells are needed for specific building block
+                        source[bb][next(wells)] = key
+                        val -= 1
+    # map plate names to numbers
+    map = {let: num+1 for num, let in enumerate(source.keys())}
     # generate pipetting pattern
-    pipetting_step_1 = []
-    pipetting_step_2 = []
-    for key, val in source.items():
-        for i in range(1, target_nr + 1):
-            for target_key, target_val in dict_targets[i].items():
-                if val in target_val:
-                    if 'I' in val or 'M' in val:
-                        pipetting_step_1.append([key, target_key, i])
-                    elif 'T' in val:
-                        pipetting_step_2.append([key, target_key, i])
-                    else:
-                        print(f'ERROR. Encountered unknown reactant type {val}')
-
-    print(f'Step 1: {pipetting_step_1}')
-    print(f'Step 2: {pipetting_step_2}')
+    step_1, step_2 = generate_pipetting_pattern(source, dict_targets, transfers_per_well)
 
     # output to file
-    dict_to_cherrypickfile(pipetting_step_1, cherry_pick_file_1, transfer_volume)
-    dict_to_cherrypickfile(pipetting_step_2, cherry_pick_file_2, transfer_volume)
+    dict_to_cherrypickfile(step_1, cherry_pick_file_1, transfer_volume, map)
+    dict_to_cherrypickfile(step_2, cherry_pick_file_2, transfer_volume, map)
     dict_to_plate(source, file_source_plate, rows, columns)
