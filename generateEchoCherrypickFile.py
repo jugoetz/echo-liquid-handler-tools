@@ -10,7 +10,8 @@ Inputs:
 Outputs:
 - Cherry-picking files (csv):
     1 file per step
-- Source plate layout file (csv):
+- Source plate layout files (csv):
+    1 file per source plate
 
 Warning: The plate specification is currently hardcoded to 384well low dead volume Echo plates
 """
@@ -98,9 +99,17 @@ def generate_pipetting_pattern(source_dict, target_dict, transfers_per_source_we
                         continue  # go to next iteration of outer for-loop without breaking
                     break  # (only executed if else statement is not hit) break the source plate loop as well
 
+    # sort the pipetting step lists so that one target plate is filled first with I, then M, then next plate is filled
+    # (minimum number of plate changes)
+    pipetting_step_1.sort(key=lambda x: x[0])  # sort by source plate
+    pipetting_step_1.sort(key=lambda x: x[2])  # sort by target plate
+    pipetting_step_2.sort(key=lambda x: x[2])  # for step 2 sorting by target plate suffices
+
     print('\n#### Transfer operations:')
     print(f'Step 1: {pipetting_step_1}')
+    print(f'Total of {len(pipetting_step_1)} operations')
     print(f'Step 2: {pipetting_step_2}')
+    print(f'Total of {len(pipetting_step_2)} operations')
     return pipetting_step_1, pipetting_step_2
 
 
@@ -113,7 +122,6 @@ def dict_to_cherrypickfile(transfers, filename, vol, map):
     :param map: dict, mapping the names of plates to numbers
     :return: None
     """
-    # TODO currently the transfer file is ordered by source plate. This creates more plate load/unload operations than ordering by target plate
     with open(filename, 'w') as csvfile:
         writer = csv.writer(csvfile)
         # write header
