@@ -132,15 +132,25 @@ def dict_to_cherrypickfile(transfers, filename, vol, map):
 
 
 if __name__ == '__main__':
-    # default file location
+    """defaults"""
     target_dir_default = 'target_plate_layouts'
-    # parse sys args
+    file_source_plate_base = 'source'
+    cherry_pick_file_1 = 'step1.csv'
+    cherry_pick_file_2 = 'step2.csv'
+    source_well_volume = 50  # usable volume [µL] of every well (total volume - dead volume)
+    transfer_volume = 1  # volume [µL] of building block solution used per filled target well
+    n_columns = 24  # WE ASSUME THAT A 384 WELL PLATE IS USED.
+    n_rows = 16
+    n_wells = n_columns * n_rows
+    building_blocks = ['I', 'M', 'T']
+
+    """parse sys args"""
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', nargs='*', help='filenames of the target plate layout files')
     args = vars(parser.parse_args())
     target_files = args['f']
 
-    # check if user gave custom input file location
+    """check if user gave custom input file location"""
     if target_files:
         # ensure this will be a list, even with only one element
         if type(target_files) == str:
@@ -156,22 +166,11 @@ if __name__ == '__main__':
     target_nr = len(file_target_plates)
     print(f'Importing files {file_target_plates}...')
 
-    # outputs
-    file_source_plate_base = 'source'
-    cherry_pick_file_1 = 'step1.csv'
-    cherry_pick_file_2 = 'step2.csv'
-
-    # specify source plate
-    source_well_volume = 9  # usable volume [µL] of every well (total volume - dead volume)
-    transfer_volume = 1  # volume [µL] of building block solution used per filled target well
-    columns = 24  # WE ASSUME THAT A 384 WELL PLATE IS USED.
-    rows = 16
-
-    # import
+    """import target plates"""
     dict_targets = plate_to_dict(file_target_plates)
     print(f'Target plates: {dict_targets}')
 
-    # count building block usage
+    """calculate number of wells in source plate for every building block"""
     counter = {}
     for i in range(1, target_nr+1):
         for val in dict_targets[i].values():
@@ -181,41 +180,57 @@ if __name__ == '__main__':
                 except KeyError:
                     counter[j.strip()] = 1
     print(f'Usage counter: {counter}')
-
-    # calculate number of wells in source plate
     transfers_per_well = source_well_volume // transfer_volume
-    wells_per_BB = {key: val // transfers_per_well + 1 for key, val in counter.items()}
+    wells_per_bb = {key: val // transfers_per_well + 1 for key, val in counter.items()}
 
-    # sort the dict of required source wells: 1st sort by building block number, then sort by type
-    wells_per_BB = dict(sorted(wells_per_BB.items(), key=lambda item: int(item[0][1:])))
-    wells_per_BB = dict(sorted(wells_per_BB.items(), key=lambda item: item[0][:1]))
-    print(f'Wells needed per BB: {wells_per_BB}')
+    """sort the dict of required source wells: 1st sort by building block number, then sort by type"""
+    wells_per_bb = dict(sorted(wells_per_bb.items(), key=lambda item: int(item[0][1:])))
+    wells_per_bb = dict(sorted(wells_per_bb.items(), key=lambda item: item[0][:1]))
+    print(f'Wells needed per BB: {wells_per_bb}')
 
-    # generate the plate layout for the source plate
+    """check if building blocks fit one plate"""
+    sum_bb = sum(wells_per_bb.values())
+    if sum_bb <= n_wells:
+        n_sources = 1  # use one source plate
+    elif sum_bb <= n_wells * len(building_blocks):
+        n_sources = len(building_blocks)  # use one plate per building block
+    else:
+        raise NotImplementedError('Cannot exceed one source plate per building block')
+
+    """generate source plate layouts"""
     source = {}
-    wells = {}
-    wells['I'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[0:rows // 3] for column in range(columns))
-    wells['M'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[rows // 3: 2 * rows // 3] for column in range(columns))
-    wells['T'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[2 * rows // 3:rows] for column in range(columns))
-    # Now this might error if the building blocks don't fit one source plate
-    try:
-        for bb in ['I', 'M', 'T']:
-            for key, val in wells_per_BB.items():
-                if key.startswith(bb):
-                    while val > 0:
-                        source[next(wells[bb])] = key
-                        val -= 1
-        print(f'Source plate: {source}')
-        source = {0, source}
-        source_plate_nr = 1
-    except StopIteration:
-        # raised when building blocks don't fit one source plate (generator object running out of free wells)
+    success = False
+    if n_sources == 1:
+        wells = {}
+        wells['I'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[0:n_rows // 3] for column in range(n_columns))
+        wells['M'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[n_rows // 3: 2 * n_rows // 3] for column in range(n_columns))
+        wells['T'] = (f'{row}{column + 1}' for row in string.ascii_uppercase[2 * n_rows // 3:n_rows] for column in range(n_columns))
+        """
+        The following assignment may still error due to the division of the plate into thirds.
+        E.g. if there are 200 of one building block and only 50 of the two other building blocks for a 384 well plate,
+        this will error.
+        We catch this with try-except and let it use separate plates for the building blocks instead
+        """
+        try:
+            for bb in ['I', 'M', 'T']:
+                for key, val in wells_per_bb.items():
+                    if key.startswith(bb):
+                        while val > 0:
+                            source[next(wells[bb])] = key
+                            val -= 1
+            print(f'Source plate: {source}')
+            source = {0: source}
+            source_plate_nr = 1
+            success = True
+        except StopIteration:
+            pass
+    if not success:
+        # when building blocks don't fit one source plate (generator object running out of free wells)
         source_plate_nr = 3
-        source = {}
-        for bb in ['I', 'M', 'T']:
-            wells = (f'{row}{column + 1}' for row in string.ascii_uppercase[0:rows] for column in range(columns))  # new plate for every building block
+        for bb in building_blocks:
+            wells = (f'{row}{column + 1}' for row in string.ascii_uppercase[0:n_rows] for column in range(n_columns))  # new plate for every building block
             source[bb] = {}  # separate dictionary for every source plate
-            for key, val in wells_per_BB.items():
+            for key, val in wells_per_bb.items():
                 if key.startswith(bb):
                     while val > 0:  # while more wells are needed for specific building block
                         source[bb][next(wells)] = key
@@ -228,4 +243,4 @@ if __name__ == '__main__':
     # output to file
     dict_to_cherrypickfile(step_1, cherry_pick_file_1, transfer_volume, map)
     dict_to_cherrypickfile(step_2, cherry_pick_file_2, transfer_volume, map)
-    dict_to_plate(source, file_source_plate_base, rows, columns, map)
+    dict_to_plate(source, file_source_plate_base, n_rows, n_columns, map)
