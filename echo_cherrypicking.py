@@ -16,6 +16,9 @@ Outputs:
 Warning: The plate specification is currently hardcoded to 384well low dead volume Echo plates
 """
 
+import sys
+sys.path.insert(0, '/Users/julian/PycharmProjects/LibraryGeneration/')  # TODO get rid of this hack
+from labware import plates
 import os
 import csv
 import string
@@ -154,7 +157,7 @@ if __name__ == '__main__':
     if target_files:
         # ensure this will be a list, even with only one element
         if type(target_files) == str:
-            file_target_plates = [target_files,]
+            file_target_plates = [target_files, ]
         else:
             file_target_plates = target_files
     else:
@@ -235,12 +238,12 @@ if __name__ == '__main__':
                     while val > 0:  # while more wells are needed for specific building block
                         source[bb][next(wells)] = key
                         val -= 1
-    # map plate names to numbers
+    """map plate names to numbers"""
     map = {let: num+1 for num, let in enumerate(source.keys())}
-    # generate pipetting pattern
+    """generate pipetting pattern"""
     step_1, step_2 = generate_pipetting_pattern(source, dict_targets, transfers_per_well)
 
-    # output to file
+    """output to file"""
     dict_to_cherrypickfile(step_1, cherry_pick_file_1, transfer_volume, map)
     dict_to_cherrypickfile(step_2, cherry_pick_file_2, transfer_volume, map)
     dict_to_plate(source, file_source_plate_base, n_rows, n_columns, map)
