@@ -99,7 +99,7 @@ def generate_pipetting_pattern(source_dict, target_dict, transfers_per_source_we
                         continue  # go to next iteration of outer for-loop without breaking
                     break  # (only executed if else statement is not hit) break the source plate loop as well
 
-    # sort the pipetting step lists so that one target plate is filled first with I, then M, then next plate is filled
+    # sort the pipetting step lists so that one target plate is filled first with I, then M, then next target plate is filled
     # (minimum number of plate changes)
     pipetting_step_1.sort(key=lambda x: x[0])  # sort by source plate
     pipetting_step_1.sort(key=lambda x: x[2])  # sort by target plate
@@ -213,7 +213,7 @@ if __name__ == '__main__':
         We catch this with try-except and let it use separate plates for the building blocks instead
         """
         try:
-            for bb in ['I', 'M', 'T']:
+            for bb in building_blocks:
                 for key, val in wells_per_bb.items():
                     if key.startswith(bb):
                         while val > 0:
