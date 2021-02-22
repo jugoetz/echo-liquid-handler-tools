@@ -17,7 +17,8 @@ Warning: The plate specification is currently hardcoded to 384well low dead volu
 """
 
 import sys
-sys.path.insert(0, '/Users/julian/PycharmProjects/LibraryGeneration/')  # TODO get rid of this hack
+from globals import PKG_PATH
+sys.path.insert(0, PKG_PATH)  # TODO get rid of this hack
 from labware import plates
 import os
 import csv
