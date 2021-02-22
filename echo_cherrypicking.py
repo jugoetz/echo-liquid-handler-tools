@@ -103,7 +103,7 @@ def generate_pipetting_pattern(source_dict, target_dict, transfers_per_source_we
                         continue  # go to next iteration of outer for-loop without breaking
                     break  # (only executed if else statement is not hit) break the source plate loop as well
 
-    # sort the pipetting step lists so that one target plate is filled first with I, then M, then next plate is filled
+    # sort the pipetting step lists so that one target plate is filled first with I, then M, then next target plate is filled
     # (minimum number of plate changes)
     pipetting_step_1.sort(key=lambda x: x[0])  # sort by source plate
     pipetting_step_1.sort(key=lambda x: x[2])  # sort by target plate
@@ -122,7 +122,7 @@ def dict_to_cherrypickfile(transfers, filename, vol, map):
     generate cherry picking file output
     :param transfers: list of 4-tuples [(source plate, source well, target plate, target well),...]
     :param filename: str
-    :param vol: int
+    :param vol: int or float, note that input is [µL] whereas [nL] will be printed to the cherrypickfile
     :param map: dict, mapping the names of plates to numbers
     :return: None
     """
@@ -130,8 +130,9 @@ def dict_to_cherrypickfile(transfers, filename, vol, map):
         writer = csv.writer(csvfile)
         # write header
         writer.writerow(['Source Barcode', 'Source Well', 'Destination Barcode', 'Destination Well', 'Volume'])
+        # write transfers
         for t in transfers:
-            writer.writerow([f'Source{map[t[0]]}', t[1], f'Synthesis{t[2]}', t[3], str(vol)])
+            writer.writerow([f'Source{map[t[0]]}', t[1], f'Synthesis{t[2]}', t[3], str(vol * 1000)])
     return
 
 
@@ -142,7 +143,7 @@ if __name__ == '__main__':
     cherry_pick_file_1 = 'step1.csv'
     cherry_pick_file_2 = 'step2.csv'
     source_well_volume = 50  # usable volume [µL] of every well (total volume - dead volume)
-    transfer_volume = 1  # volume [µL] of building block solution used per filled target well
+    transfer_volume = 1.1  # volume [µL] of building block solution used per filled target well
     n_columns = 24  # WE ASSUME THAT A 384 WELL PLATE IS USED.
     n_rows = 16
     n_wells = n_columns * n_rows
@@ -216,7 +217,7 @@ if __name__ == '__main__':
         We catch this with try-except and let it use separate plates for the building blocks instead
         """
         try:
-            for bb in ['I', 'M', 'T']:
+            for bb in building_blocks:
                 for key, val in wells_per_bb.items():
                     if key.startswith(bb):
                         while val > 0:
