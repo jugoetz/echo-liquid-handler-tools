@@ -128,7 +128,7 @@ def dict_to_cherrypickfile(transfers, filename, vol, map):
         writer.writerow(['Source Barcode', 'Source Well', 'Destination Barcode', 'Destination Well', 'Volume'])
         # write transfers
         for t in transfers:
-            writer.writerow([f'Source{map[t[0]]}', t[1], f'Synthesis{t[2]}', t[3], str(vol * 1000)])
+            writer.writerow([f'Source{map[t[0]]}', t[1], f'Synthesis{t[2]}', t[3], str(int(vol * 1000))])
     return
 
 
