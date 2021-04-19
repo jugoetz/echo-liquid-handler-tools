@@ -142,12 +142,19 @@ if __name__ == '__main__':
     file_source_plate_base = 'source'
     cherry_pick_file_1 = 'step1.csv'
     cherry_pick_file_2 = 'step2.csv'
-    source_well_volume = 50  # usable volume [µL] of every well (total volume - dead volume)
-    transfer_volume = 1.1  # volume [µL] of building block solution used per filled target well
-    n_columns = 24  # WE ASSUME THAT A 384 WELL PLATE IS USED.
-    n_rows = 16
-    n_wells = n_columns * n_rows
+    source_well_max_volume = 65000  # nL
+    source_well_dead_volume = 15000  # nL
+    source_n_columns = 24
+    source_n_rows = 16
+    target_well_max_volume = 12000  # nL
+    target_well_dead_volume = 2500  # nL
+    target_n_columns = 24
+    target_n_rows = 16
+
+    transfer_volume = 1100  # volume [nL] of building block solution used per filled target well
     building_blocks = ['I', 'M', 'T']
+
+    source_n_wells = source_n_rows * source_n_columns
 
     """parse sys args"""
     parser = argparse.ArgumentParser()
@@ -167,37 +174,61 @@ if __name__ == '__main__':
         file_target_plates = []
         for root, _, files in os.walk(target_dir_default):
             for f in files:
-                file_target_plates.append(os.path.join(root, f))
-    target_nr = len(file_target_plates)
+                if not f.endswith('_volumes.csv'):  # filter volume files
+                    file_target_plates.append(os.path.join(root, f))
     print(f'Importing files {file_target_plates}...')
 
     """import target plates"""
-    dict_targets = plate_to_dict(file_target_plates)
-    print(f'Target plates: {dict_targets}')
+    target_plates = []
+    for i, file in enumerate(file_target_plates):
+        target_plates.append(plates.Plate(target_n_rows,
+                                          target_n_columns,
+                                          target_well_max_volume,
+                                          target_well_dead_volume
+                                          ))  # generate the Plate instance to hold the data
+        target_plates[i].from_csv(file, vol=3300)
+        target_plates[i].to_csv(file, True)
+
+    print(f'Target plates:')
+    for p in target_plates:
+        print(p)
 
     """calculate number of wells in source plate for every building block"""
-    counter = {}
-    for i in range(1, target_nr+1):
-        for val in dict_targets[i].values():
-            for j in val.split(','):
+    usage = {}
+    for plate in target_plates:
+        for well in plate.wells():
+            compounds, volume = plate.well(well)
+            for compound in compounds:
                 try:
-                    counter[j.strip()] += 1
-                except KeyError:
-                    counter[j.strip()] = 1
-    print(f'Usage counter: {counter}')
-    transfers_per_well = source_well_volume // transfer_volume
-    wells_per_bb = {key: val // transfers_per_well + 1 for key, val in counter.items()}
+                    usage[compound] += volume // len(compounds)  # we use floor division as we deal with int nL values
+                except KeyError:  # raised if this is the first time this building block is encountered
+                    usage[compound] = volume // len(compounds)
+    print(f'Usage counter: {usage}')
+    wells_per_bb = {key: val // (source_well_max_volume - source_well_dead_volume) + 1 for key, val in usage.items()}
 
     """sort the dict of required source wells: 1st sort by building block number, then sort by type"""
     wells_per_bb = dict(sorted(wells_per_bb.items(), key=lambda item: int(item[0][1:])))
     wells_per_bb = dict(sorted(wells_per_bb.items(), key=lambda item: item[0][:1]))
     print(f'Wells needed per BB: {wells_per_bb}')
 
+    source_plates = []
+    finished = False
+    i = 0
+    while finished is False:
+        source_plates.append(plates.Plate(source_n_rows,
+                                          source_n_columns,
+                                          source_well_max_volume,
+                                          source_well_dead_volume
+                                          ))
+        # TODO go on here
+        plate = source_plates[i]
+        for key, val in wells_per_bb.values():
+            plate.free()
     """check if building blocks fit one plate"""
     sum_bb = sum(wells_per_bb.values())
-    if sum_bb <= n_wells:
+    if sum_bb <= source_n_wells:
         n_sources = 1  # use one source plate
-    elif sum_bb <= n_wells * len(building_blocks):
+    elif sum_bb <= source_n_wells * len(building_blocks):
         n_sources = len(building_blocks)  # use one plate per building block
     else:
         raise NotImplementedError('Cannot exceed one source plate per building block')
