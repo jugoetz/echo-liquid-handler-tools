@@ -1,3 +1,5 @@
 /*.csv
 /.idea
 /globals.py
+*tar.gz
+target_plate_layouts
