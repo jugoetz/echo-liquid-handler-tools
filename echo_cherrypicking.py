@@ -162,7 +162,7 @@ if __name__ == '__main__':
         # use default location
         file_target_plates = []
         for root, _, files in os.walk(target_dir_default):
-            for f in files:
+            for f in sorted(files):  # sorting here is crucial b/c os.walk returns files in arbitrary order. Mind that this is not natural sorting for filenames containing double digit numbers.
                 file_target_plates.append(os.path.join(root, f))
     target_nr = len(file_target_plates)
     print(f'Importing files {file_target_plates}...')
